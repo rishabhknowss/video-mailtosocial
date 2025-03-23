@@ -1,11 +1,15 @@
-// app/api/audio/train/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { ElevenLabsClient } from "elevenlabs";
 import prisma from "@/prisma/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/authOptions";
-import path from "path";
-import fs from "fs";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { Readable } from "stream";
+
+// Configure S3 client
+const s3Client = new S3Client({ 
+  region: "us-west-1" // Make sure this matches your bucket region
+});
 
 export async function POST(req: NextRequest) {
   // Check authentication
@@ -19,31 +23,71 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { audio } = body;
     
-    // Validate audio file path
+    // Validate audio URL
     if (!audio || typeof audio !== "string") {
-      return NextResponse.json({ error: "Valid audio file path is required" }, { status: 400 });
+      return NextResponse.json({ error: "Valid audio URL is required" }, { status: 400 });
     }
     
-    // Verify the file exists
-    if (!fs.existsSync(audio)) {
-      return NextResponse.json({ error: "Audio file not found" }, { status: 404 });
+    // Parse the S3 URL to extract bucket and key
+    let bucketName, objectKey;
+    
+    try {
+      const urlPattern = /https:\/\/(?:s3\.[\w-]+\.amazonaws\.com\/([^\/]+)\/(.+)|([^.]+)\.s3\.[\w-]+\.amazonaws\.com\/(.+))/;
+      const match = audio.match(urlPattern);
+      
+      if (match) {
+        if (match[1] && match[2]) {
+          // Path-style URL: https://s3.region.amazonaws.com/bucketname/keyname
+          bucketName = match[1];
+          objectKey = match[2];
+        } else if (match[3] && match[4]) {
+          // Virtual-hosted style: https://bucketname.s3.region.amazonaws.com/keyname
+          bucketName = match[3];
+          objectKey = match[4];
+        }
+      } else {
+        // For your specific bucket format
+        bucketName = "bucket.mailtosocial.com";
+        const urlObj = new URL(audio);
+        objectKey = urlObj.pathname.substring(1); // Remove leading slash
+      }
+    } catch (error) {
+      return NextResponse.json({ error: "Invalid S3 URL format" }, { status: 400 });
+    }
+
+    // Get the object from S3
+    const getObjectParams = {
+      Bucket: bucketName,
+      Key: objectKey,
+    };
+    
+    const { Body } = await s3Client.send(new GetObjectCommand(getObjectParams));
+    
+    if (!Body) {
+      return NextResponse.json({ error: "Could not retrieve audio file from S3" }, { status: 404 });
     }
     
-    // Basic file type validation by checking extension
-    const fileExt = path.extname(audio).toLowerCase();
-    if (!['.mp3', '.wav', '.m4a'].includes(fileExt)) {
-      return NextResponse.json({ error: "Unsupported audio format" }, { status: 400 });
+    // Convert the S3 object stream to a Blob
+    const chunks = [];
+    const stream = Body as Readable;
+    
+    for await (const chunk of stream) {
+      chunks.push(chunk);
     }
+    
+    const buffer = Buffer.concat(chunks);
+    const audioBlob = new Blob([buffer]);
 
     // Initialize ElevenLabs client
     const client = new ElevenLabsClient({
       apiKey: process.env.ELEVENLABS_API_KEY,
     });
     
-    // Send to ElevenLabs
+    // Send to ElevenLabs using the file Blob
     const response = await client.voices.add({
-      files: [fs.createReadStream(audio)],
-      name: session.user.id
+      name: session.user.id,
+      description: "Generated voice for VideoGen",
+      files: [audioBlob],
     });
     
     // Update user in database

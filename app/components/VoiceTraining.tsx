@@ -101,7 +101,7 @@ export default function VoiceTraining() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          audio: s3Url,
+          audio: s3Url,  // This should be the S3 URL, not a local file path
         }),
       });
 
