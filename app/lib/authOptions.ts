@@ -16,10 +16,12 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     session: async ({ session, user }) => {
       if (session?.user) {
-      
         session.user.id = user.id;
       }
       return session; 
     },
-  }
+  },
+  
+  // Add debug mode to see more information during development
+  debug: process.env.NODE_ENV === "development",
 };
