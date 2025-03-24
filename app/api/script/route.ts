@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         
         // Generate content
-        const fullPrompt = `Write a short, engaging script about ${prompt}. The script should be concise, natural sounding, and suitable for a 30-60 second video. The tone should be professional but conversational. No greetings or introductions needed.`;
+        const fullPrompt = `Write a short, engaging script about ${prompt} from a first-person perspective. Only one person should be speaking. The script should feel natural, like someone sharing their thoughts or expertise in a conversational yet professional tone. Keep it concise and suited for a 30-60 second video. No greetings, introductions, or sign-offs—just straight into the topic.`;
         console.log("Sending prompt to Gemini:", fullPrompt);
         
         const result = await model.generateContent(fullPrompt);
