@@ -4,14 +4,15 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/authOptions";
 import prisma from "@/prisma/db";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, context: { params: { id: string } }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || !session.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const params = await context.params;
 
-    const id = Number(params.id);
+    const id =   Number(params.id);
     if (isNaN(id)) {
       return NextResponse.json({ error: "Invalid project ID" }, { status: 400 });
     }

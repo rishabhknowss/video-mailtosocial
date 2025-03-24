@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ 
       url: presignedUrl,
       key: uniqueFileName,
-      bucket: process.env.AWS_S3_BUCKET_NAME
+      bucket: process.env.AWS_S3_BUCKET_NAME,
+      region: process.env.AWS_REGION || "us-west-1"
     });
     
   } catch (error) {

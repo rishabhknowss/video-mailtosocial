@@ -34,8 +34,27 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    // Update project status to PROCESSING if projectId is provided
+    if (projectId) {
+      await prisma.project.update({
+        where: { id: Number(projectId) },
+        data: {
+          status: "PROCESSING",
+          updatedAt: new Date(),
+        },
+      });
+    }
+    
+    // Configure fal.ai client with API key
+    fal.config({
+      credentials: process.env.FAL_AI_API_KEY,
+    });
+    
+    console.log("Starting lipsync processing with:");
+    console.log("- Audio URL:", audio_url);
+    console.log("- Video URL:", video_url);
+
     // Process with fal.ai
-    console.log("Starting lipsync processing...");
     const result = await fal.subscribe("fal-ai/sync-lipsync", {
       input: {
         video_url,
@@ -49,8 +68,9 @@ export async function POST(req: NextRequest) {
       },
     });
     
+    console.log("fal.ai response:", result);
+    
     // Check if the result has the expected data structure
-    // Based on the provided example: { "video": { "url": "https://..." } }
     if (!result.data || !result.data.video || !result.data.video.url) {
       console.error("Invalid response format:", result);
       return NextResponse.json({ 

@@ -21,7 +21,8 @@ export async function POST(req: NextRequest) {
         // Check for API key
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
-            return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+            console.error("Gemini API key is missing");
+            return NextResponse.json({ error: "Server configuration error - API key missing" }, { status: 500 });
         }
         
         // Initialize the Gemini client
@@ -29,11 +30,23 @@ export async function POST(req: NextRequest) {
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         
         // Generate content
-        const result = await model.generateContent(prompt);
+        const fullPrompt = `Write a short, engaging script about ${prompt}. The script should be concise, natural sounding, and suitable for a 30-60 second video. The tone should be professional but conversational. No greetings or introductions needed.`;
+        console.log("Sending prompt to Gemini:", fullPrompt);
         
+        const result = await model.generateContent(fullPrompt);
+        const generatedText = result.response.text();
+        
+        if (!generatedText) {
+            console.error("Gemini returned empty response");
+            return NextResponse.json({ error: "AI generated empty content" }, { status: 500 });
+        }
+        
+        console.log("Generated script:", generatedText.substring(0, 100) + "...");
+        
+        // Return with consistent structure
         return NextResponse.json({ 
             success: true, 
-            text: result.response.text 
+            text: generatedText 
         });
         
     } catch (error) {

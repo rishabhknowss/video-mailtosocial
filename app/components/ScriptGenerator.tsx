@@ -17,7 +17,8 @@ export default function ScriptGenerator() {
     setError(null);
   };
 
-  const handleGenerateScript = async () => {
+// app/components/ScriptGenerator.tsx (relevant part of the handleGenerateScript function)
+const handleGenerateScript = async () => {
     if (!prompt.trim()) {
       setError("Please enter a prompt for script generation");
       return;
@@ -32,31 +33,38 @@ export default function ScriptGenerator() {
     setError(null);
 
     try {
+      console.log("Sending script generation request for prompt:", prompt);
+      
       // Generate script with Gemini API
       const response = await fetch("/api/script", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          prompt: `Write a short, engaging script about ${prompt}. The script should be concise, natural sounding, and suitable for a 30-60 second video. The tone should be professional but conversational. No greetings or introductions needed.`,
-        }),
+        body: JSON.stringify({ prompt }),
       });
 
+      const data = await response.json();
+      console.log("Script API response:", data);
+      
       if (!response.ok) {
-        const data = await response.json();
         throw new Error(data.error || "Failed to generate script");
       }
 
-      const data = await response.json();
+      if (!data || !data.text) {
+        console.error("Invalid response format:", data);
+        throw new Error("Script data not found in response");
+      }
+      
       setScript(data.text);
       setGenerated(true);
     } catch (err) {
+      console.error("Script generation error:", err);
       setError(err instanceof Error ? err.message : "An unknown error occurred");
     } finally {
       setGenerating(false);
     }
-  };
+};
 
   const handleSave = async () => {
     try {
@@ -78,8 +86,16 @@ export default function ScriptGenerator() {
       }
 
       // Success - project saved!
-      setGenerated(true);
+      const data = await response.json();
+      console.log("Project saved:", data); // Debug logging
+      
+      // Add confirmation message or redirect logic here if needed
+      alert("Project saved successfully!");
+      
+      // Optionally refresh the page or redirect to projects
+      // window.location.href = "/dashboard";
     } catch (err) {
+      console.error("Save project error:", err);
       setError(err instanceof Error ? err.message : "An unknown error occurred");
     }
   };

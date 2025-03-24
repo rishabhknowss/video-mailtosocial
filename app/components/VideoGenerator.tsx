@@ -45,6 +45,7 @@ export default function VideoGenerator({ projectId }: { projectId?: number }) {
       }
       
       const data = await response.json();
+      console.log("Fetched project:", data);
       setProject(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unknown error occurred");
@@ -56,12 +57,11 @@ export default function VideoGenerator({ projectId }: { projectId?: number }) {
   const generateAudio = async () => {
     if (!project?.script) {
       setError("No script available to generate audio");
-      return;
+      return null;
     }
 
     try {
       setMessage("Generating audio from script...");
-      setGenerating(true);
       
       const response = await fetch("/api/audio/text-to-speech", {
         method: "POST",
@@ -73,22 +73,30 @@ export default function VideoGenerator({ projectId }: { projectId?: number }) {
         }),
       });
       
+      const data = await response.json();
+      console.log("Audio generation response:", data);
+      
       if (!response.ok) {
-        throw new Error("Failed to generate audio");
+        throw new Error(data.error || data.msg || "Failed to generate audio");
       }
       
-      const data = await response.json();
+      if (!data.response || typeof data.response !== 'string') {
+        console.error("Invalid audio URL in response:", data);
+        throw new Error("No valid audio URL was generated");
+      }
+      
       setAudioUrl(data.response);
       setMessage("Audio generated successfully! Now creating lip-synced video...");
       
       return data.response;
     } catch (err) {
+      console.error("Audio generation error:", err);
       setError(err instanceof Error ? err.message : "An unknown error occurred");
-      throw err;
+      return null;
     }
   };
 
-  const generateVideo = async (audioUrl: string) => {
+  const generateVideo = async (audioUrlParam: string) => {
     try {
       // Get user's video URL
       const userResponse = await fetch("/api/user/profile");
@@ -98,10 +106,15 @@ export default function VideoGenerator({ projectId }: { projectId?: number }) {
       }
       
       const userData = await userResponse.json();
+      console.log("User profile:", userData);
       
       if (!userData.videoUrl) {
         throw new Error("You need to upload a video first");
       }
+      
+      console.log("Sending video generation request with:");
+      console.log("Audio URL:", audioUrlParam);
+      console.log("Video URL:", userData.videoUrl);
       
       // Generate lip-synced video
       const response = await fetch("/api/video", {
@@ -110,18 +123,20 @@ export default function VideoGenerator({ projectId }: { projectId?: number }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          audio_url: audioUrl,
+          audio_url: audioUrlParam,
           video_url: userData.videoUrl,
           projectId: project?.id,
           title: project?.title || "New Video"
         }),
       });
       
+      const data = await response.json();
+      console.log("Video generation response:", data);
+      
       if (!response.ok) {
-        throw new Error("Failed to generate video");
+        throw new Error(data.error || "Failed to generate video");
       }
       
-      const data = await response.json();
       setVideoOutput(data.outputUrl);
       setMessage(null);
       
@@ -130,6 +145,7 @@ export default function VideoGenerator({ projectId }: { projectId?: number }) {
         fetchProject(project.id);
       }
     } catch (err) {
+      console.error("Video generation error:", err);
       setError(err instanceof Error ? err.message : "An unknown error occurred");
     } finally {
       setGenerating(false);
@@ -148,13 +164,16 @@ export default function VideoGenerator({ projectId }: { projectId?: number }) {
 
     try {
       // First generate audio from text
-      const audioUrl = await generateAudio();
+      const generatedAudioUrl = await generateAudio();
       
-      // Then generate video with lip-sync
-      if (audioUrl) {
-        await generateVideo(audioUrl);
+      // Only proceed with video generation if we have a valid audio URL
+      if (generatedAudioUrl && typeof generatedAudioUrl === 'string') {
+        await generateVideo(generatedAudioUrl);
+      } else {
+        throw new Error("Failed to generate audio - cannot proceed with video creation");
       }
     } catch (err) {
+      console.error("Video generation process error:", err);
       setError(err instanceof Error ? err.message : "An unknown error occurred");
       setGenerating(false);
     }

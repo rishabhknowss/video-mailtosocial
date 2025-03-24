@@ -70,7 +70,7 @@ export default function VideoUpload() {
       }
 
       // Step 3: Update user record with the video URL
-      const s3Url = `https://${urlData.bucket}.s3.amazonaws.com/${urlData.key}`;
+      const s3Url = `https://s3.${urlData.region || 'us-west-1'}.amazonaws.com/${urlData.bucket}/${urlData.key}`;
       
       // Update user profile with video URL
       const updateResponse = await fetch("/api/user/updateVideo", {

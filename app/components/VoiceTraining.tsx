@@ -72,7 +72,7 @@ export default function VoiceTraining() {
       }
 
       // Step 3: Update user record with the audio URL
-      const s3Url = `https://${urlData.bucket}.s3.amazonaws.com/${urlData.key}`;
+      const s3Url = `https://s3.${urlData.region || 'us-west-1'}.amazonaws.com/${urlData.bucket}/${urlData.key}`;
       setAudioUrl(s3Url);
       
       // Save audio URL to user profile
