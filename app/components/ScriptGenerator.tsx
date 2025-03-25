@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { useSession } from "next-auth/react";
-import { FileText, Wand2, AlertCircle, CheckCircle, Tag } from "lucide-react";
+import { FileText, Wand2, AlertCircle, CheckCircle, Image as ImageIcon } from "lucide-react";
+
+// Define the scene structure
+interface Scene {
+  content: string;
+  imagePrompt: string;
+}
 
 export default function ScriptGenerator() {
   const { data: session } = useSession();
@@ -10,8 +16,8 @@ export default function ScriptGenerator() {
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [script, setScript] = useState<string>("");
-  const [keywords, setKeywords] = useState<string[]>([]);
+  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [fullScript, setFullScript] = useState<string>("");
 
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setPrompt(e.target.value);
@@ -51,13 +57,13 @@ export default function ScriptGenerator() {
         throw new Error(data.error || "Failed to generate script");
       }
 
-      if (!data || !data.text) {
+      if (!data || !data.scenes || !data.fullScript) {
         console.error("Invalid response format:", data);
         throw new Error("Script data not found in response");
       }
       
-      setScript(data.text);
-      setKeywords(data.keywords || []);
+      setScenes(data.scenes);
+      setFullScript(data.fullScript);
       setGenerated(true);
     } catch (err) {
       console.error("Script generation error:", err);
@@ -77,8 +83,8 @@ export default function ScriptGenerator() {
         },
         body: JSON.stringify({
           title: prompt.length > 30 ? prompt.substring(0, 30) + "..." : prompt,
-          script,
-          keywords: keywords,
+          script: fullScript,
+          scenes: scenes,
         }),
       });
 
@@ -89,13 +95,9 @@ export default function ScriptGenerator() {
 
       // Success - project saved!
       const data = await response.json();
-      console.log("Project saved:", data); // Debug logging
+      console.log("Project saved:", data);
       
-      // Add confirmation message or redirect logic here if needed
       alert("Project saved successfully!");
-      
-      // Optionally refresh the page or redirect to projects
-      // window.location.href = "/dashboard";
     } catch (err) {
       console.error("Save project error:", err);
       setError(err instanceof Error ? err.message : "An unknown error occurred");
@@ -106,7 +108,7 @@ export default function ScriptGenerator() {
     <div className="bg-white p-6 rounded-lg shadow-md">
       <h2 className="text-xl font-semibold mb-4">Generate Script</h2>
       <p className="text-gray-600 mb-4">
-        Enter a topic or idea, and we'll generate a script for your video.
+        Enter a topic or idea, and we'll generate a scene-by-scene script with visuals for your video.
       </p>
 
       <div className="mb-4">
@@ -148,12 +150,12 @@ export default function ScriptGenerator() {
         ) : (
           <span className="flex items-center justify-center">
             <Wand2 className="h-4 w-4 mr-2" />
-            Generate Script
+            Generate Scene-by-Scene Script
           </span>
         )}
       </button>
 
-      {generated && script && (
+      {generated && scenes.length > 0 && (
         <div className="mt-6">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-lg font-medium text-gray-700">Generated Script</h3>
@@ -165,28 +167,39 @@ export default function ScriptGenerator() {
               Save to Project
             </button>
           </div>
-          <div className="p-4 bg-gray-50 rounded-md border border-gray-200 mb-4">
-            <p className="whitespace-pre-wrap text-gray-800">{script}</p>
+          
+          <div className="space-y-4">
+            {scenes.map((scene, index) => (
+              <div key={index} className="border border-gray-200 rounded-md overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                  <h4 className="font-medium text-gray-700">Scene {index + 1}</h4>
+                </div>
+                <div className="p-4">
+                  <div className="mb-3">
+                    <h5 className="text-sm font-medium text-gray-600 mb-1">Content:</h5>
+                    <p className="text-gray-800">{scene.content}</p>
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-medium text-gray-600 mb-1 flex items-center">
+                      <ImageIcon className="h-3 w-3 mr-1" />
+                      Image Prompt:
+                    </h5>
+                    <p className="text-sm bg-blue-50 border border-blue-100 rounded-md p-2 text-blue-800">
+                      {scene.imagePrompt}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
           
-          {keywords.length > 0 && (
-            <div className="mt-4">
-              <h4 className="text-sm font-medium text-gray-700 flex items-center mb-2">
-                <Tag className="h-3 w-3 mr-1" />
-                Visual Keywords for B-roll
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {keywords.map((keyword, index) => (
-                  <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-xs">
-                    {keyword}
-                  </span>
-                ))}
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                These keywords will be used to generate B-roll images for your video.
-              </p>
-            </div>
-          )}
+          <div className="mt-4 p-4 bg-purple-50 border border-purple-100 rounded-md">
+            <p className="text-sm text-purple-800">
+              This script is divided into {scenes.length} scenes. Each scene has content and an image prompt. 
+              When you save this project, we'll generate images for each scene and create a video with your 
+              AI avatar narrating the script.
+            </p>
+          </div>
         </div>
       )}
     </div>

@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
+import { TimedScene } from '../api/video/generate/route';
 
 // Configure S3 client
 const s3Client = new S3Client({
@@ -615,3 +616,263 @@ export async function mergePortraitVideo(
       });
     });
   }
+
+  // Create a slideshow with smooth transitions and Ken Burns effect
+// Create a simplified slideshow with Ken Burns effect
+async function createEnhancedSlideshow(
+  imagePaths: string[],
+  audioPath: string,
+  outputPath: string,
+  timedScenes: TimedScene[],
+  totalDuration: number
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    if (imagePaths.length === 0) {
+      reject(new Error('No images provided for slideshow'));
+      return;
+    }
+    
+    try {
+      // First, prepare the image inputs part of the command
+      const ffmpegInputs: string[] = [];
+      
+      // Add each image as an input
+      imagePaths.forEach((imagePath) => {
+        ffmpegInputs.push('-loop', '1', '-i', imagePath);
+      });
+      
+      // Add audio input
+      ffmpegInputs.push('-i', audioPath);
+      
+      // Create a simplified filter complex
+      let filterComplex = '';
+      
+      // Process each image with scale and pad first
+      imagePaths.forEach((_, i) => {
+        filterComplex += `[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,` +
+          `pad=1920:1080:(ow-iw)/2:(oh-ih)/2[v${i}];`;
+      });
+      
+      // Create segments with the correct durations
+      const segments : string[]= [];
+      timedScenes.forEach((scene, i) => {
+        if (i < imagePaths.length) {
+          // Calculate duration in seconds
+          const durationSec = Math.max(1, Math.ceil((scene.end - scene.start) / 1000));
+          
+          // Create segment with fade in/out
+          filterComplex += `[v${i}]trim=duration=${durationSec},` +
+            `fade=t=in:st=0:d=0.5,fade=t=out:st=${Math.max(0, durationSec - 0.5)}:d=0.5[f${i}];`;
+          
+          segments.push(`[f${i}]`);
+        }
+      });
+      
+      // Concatenate all segments
+      filterComplex += `${segments.join('')}concat=n=${segments.length}:v=1:a=0[outv]`;
+      
+      // Build the FFmpeg command
+      const ffmpegArgs = [
+        '-y',                           // Overwrite output file if it exists
+        ...ffmpegInputs,                // Input files (images and audio)
+        '-filter_complex', filterComplex, // The complex filter 
+        '-map', '[outv]',               // Map the video output
+        '-map', `${imagePaths.length}:a`, // Map the audio (last input)
+        '-c:v', 'libx264',              // Video codec
+        '-c:a', 'aac',                  // Audio codec
+        '-shortest',                    // End when shortest input ends
+        '-pix_fmt', 'yuv420p',          // Pixel format for compatibility
+        '-preset', 'medium',            // Encoding preset
+        '-crf', '23',                   // Constant rate factor (quality)
+        outputPath                      // Output file
+      ];
+      
+      console.log('FFmpeg simplified slideshow command:', ffmpegArgs.join(' '));
+      
+      // Execute the FFmpeg command
+      const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+      
+      let stderr = '';
+      
+      ffmpeg.stderr.on('data', (data) => {
+        stderr += data.toString();
+        // Log progress
+        process.stdout.write(`\rFFmpeg: ${data.toString().trim()}`);
+      });
+      
+      ffmpeg.on('error', (error) => {
+        console.error('\nFFmpeg process error:', error);
+        reject(error);
+      });
+      
+      ffmpeg.on('close', (code) => {
+        if (code === 0) {
+          console.log('\nFFmpeg slideshow created successfully');
+          resolve(outputPath);
+        } else {
+          console.error(`\nFFmpeg process exited with code ${code}`);
+          console.error('FFmpeg stderr:', stderr);
+          reject(new Error(`FFmpeg exited with code ${code}: ${stderr}`));
+        }
+      });
+    } catch (error) {
+      console.error('Error creating enhanced slideshow:', error);
+      reject(error);
+    }
+  });
+}
+
+// Create a basic slideshow as a fallback option
+async function createBasicSlideshow(
+  imagePaths: string[],
+  audioPath: string,
+  outputPath: string,
+  timedScenes: TimedScene[],
+  totalDuration: number
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    if (imagePaths.length === 0) {
+      reject(new Error('No images provided for slideshow'));
+      return;
+    }
+    
+    try {
+      // Calculate duration per image in seconds
+      const audioDurationSec = totalDuration / 1000;
+      const durationPerImageSec = audioDurationSec / imagePaths.length;
+      
+      // Create a text file with image durations for concat demuxer
+      const tempDir = path.dirname(outputPath);
+      const inputListPath = path.join(tempDir, `concat_list_${Date.now()}.txt`);
+      
+      // Create the file content for concat
+      let fileContent = '';
+      imagePaths.forEach((imagePath) => {
+        fileContent += `file '${imagePath.replace(/'/g, "'\\''")}'` + '\n';
+        fileContent += `duration ${durationPerImageSec}` + '\n';
+      });
+      // Add the last file again with a very short duration to avoid issues
+      fileContent += `file '${imagePaths[imagePaths.length - 1].replace(/'/g, "'\\''")}'` + '\n';
+      fileContent += `duration 0.1` + '\n';
+      
+      // Write the list file
+      fs.writeFileSync(inputListPath, fileContent);
+      
+      // Simple FFmpeg command using concat demuxer
+      const ffmpegArgs = [
+        '-y',                        // Overwrite output file
+        '-f', 'concat',              // Use concat demuxer
+        '-safe', '0',                // Allow unsafe file paths
+        '-i', inputListPath,         // Input file list
+        '-i', audioPath,             // Audio input
+        '-c:v', 'libx264',           // Video codec
+        '-c:a', 'aac',               // Audio codec
+        '-pix_fmt', 'yuv420p',       // Pixel format
+        '-shortest',                 // End with shortest input
+        outputPath                   // Output file
+      ];
+      
+      console.log('FFmpeg basic slideshow command:', ffmpegArgs.join(' '));
+      
+      // Execute FFmpeg
+      const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+      
+      let stderr = '';
+      
+      ffmpeg.stderr.on('data', (data) => {
+        stderr += data.toString();
+        process.stdout.write(`\rFFmpeg basic: ${data.toString().trim()}`);
+      });
+      
+      ffmpeg.on('error', (error) => {
+        console.error('\nFFmpeg process error:', error);
+        reject(error);
+      });
+      
+      ffmpeg.on('close', (code) => {
+        // Clean up temp file
+        try {
+          fs.unlinkSync(inputListPath);
+        } catch (err) {
+          console.error('Error deleting temp file:', err);
+        }
+        
+        if (code === 0) {
+          console.log('\nFFmpeg basic slideshow created successfully');
+          resolve(outputPath);
+        } else {
+          console.error(`\nFFmpeg process exited with code ${code}`);
+          console.error('FFmpeg stderr:', stderr);
+          reject(new Error(`FFmpeg basic slideshow failed with code ${code}: ${stderr}`));
+        }
+      });
+    } catch (error) {
+      console.error('Error creating basic slideshow:', error);
+      reject(error);
+    }
+  });
+}
+
+// Function to merge slideshow and person video into a split-screen format
+export async function createSplitScreenVideo(
+  slideshowPath: string,
+  personVideoPath: string,
+  outputPath: string
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    try {
+      // Build FFmpeg command for split-screen merge
+      const ffmpegArgs = [
+        '-y',                                 // Overwrite output file if it exists
+        '-i', slideshowPath,                  // Slideshow input (with Ken Burns effect)
+        '-i', personVideoPath,                // Person video input (lip-synced)
+        '-filter_complex',                    // Start complex filtergraph
+        // Create a 16:9 split-screen video with images on top and person on bottom
+        `[0:v]scale=1920:1080,setsar=1[top];` +  // Scale slideshow to 1920x1080
+        `[1:v]scale=1920:1080,setsar=1[bottom];` + // Scale person video to 1920x1080
+        // Stack the videos vertically (top 50%, bottom 50%)
+        `[top][bottom]vstack=inputs=2[v]`,
+        '-map', '[v]',                       // Map combined video
+        '-map', '0:a',                       // Use audio from slideshow (which has the full audio)
+        '-c:v', 'libx264',                   // Video codec
+        '-c:a', 'aac',                       // Audio codec
+        '-preset', 'medium',                  // Encoding preset
+        '-crf', '23',                         // Quality level
+        '-shortest',                          // End when shortest input ends
+        outputPath                            // Output file
+      ];
+      
+      console.log('FFmpeg split-screen command:', ffmpegArgs.join(' '));
+      
+      // Execute the FFmpeg command
+      const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+      
+      let stderr = '';
+      
+      ffmpeg.stderr.on('data', (data) => {
+        stderr += data.toString();
+        // Log progress
+        process.stdout.write(`\rFFmpeg Merge: ${data.toString().trim()}`);
+      });
+      
+      ffmpeg.on('error', (error) => {
+        console.error('\nFFmpeg merge error:', error);
+        reject(error);
+      });
+      
+      ffmpeg.on('close', (code) => {
+        if (code === 0) {
+          console.log('\nFFmpeg split-screen merge completed successfully');
+          resolve(outputPath);
+        } else {
+          console.error(`\nFFmpeg merge exited with code ${code}`);
+          console.error('FFmpeg merge stderr:', stderr);
+          reject(new Error(`FFmpeg merge exited with code ${code}`));
+        }
+      });
+    } catch (error) {
+      console.error('Error creating split-screen video:', error);
+      reject(error);
+    }
+  });
+}

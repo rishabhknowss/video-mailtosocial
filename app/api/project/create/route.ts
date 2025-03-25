@@ -4,6 +4,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/authOptions";
 import prisma from "@/prisma/db";
 
+// Define the scene structure
+interface Scene {
+  content: string;
+  imagePrompt: string;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -11,7 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { title, script, keywords = [] } = await req.json();
+    const { title, script, scenes = [] } = await req.json();
     
     if (!title || !script) {
       return NextResponse.json({ 
@@ -19,12 +25,16 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Create new project with keywords
+    // Extract image prompts from scenes
+    const imagePrompts = scenes.map((scene: Scene) => scene.imagePrompt);
+
+    // Create new project with scenes data
     const project = await prisma.project.create({
       data: {
         title,
         script,
-        keywords: keywords,
+        scenes: JSON.stringify(scenes), // Store scenes as a JSON string
+        imagePrompts: imagePrompts, // Store image prompts separately for easier access
         userId: session.user.id,
         status: "DRAFT",
       },

@@ -4,6 +4,17 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/authOptions";
 
+// Define the scene structure
+interface Scene {
+  content: string;
+  imagePrompt: string;
+}
+
+// Define the response structure
+interface ScriptResponse {
+  scenes: Scene[];
+}
+
 export async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session || !session.user) {
@@ -29,44 +40,80 @@ export async function POST(req: NextRequest) {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         
-        // Generate script content
-        const scriptPrompt = `Write a short, engaging script about ${prompt} from a first-person perspective. Only one person should be speaking. The script should feel natural, like someone sharing their thoughts or expertise in a conversational yet professional tone. Keep it concise and suited for a 30-60 second video. No greetings, introductions, or sign-offs—just straight into the topic.`;
-        console.log("Sending script prompt to Gemini:", scriptPrompt);
+        // Request scene-based content and image prompts in a single request
+        const scenePrompt = `
+        Create a short, engaging video script about "${prompt}" divided into 4-6 distinct scenes.
         
-        const scriptResult = await model.generateContent(scriptPrompt);
-        const scriptText = scriptResult.response.text();
+        For each scene, provide:
+        1. Content: A short paragraph of spoken text in first-person perspective, conversational yet professional tone. The complete script should be 30-60 seconds when spoken.
+        2. Image Prompt: A detailed image generation prompt that would create a beautiful, relevant visual to accompany this scene.
         
-        if (!scriptText) {
-            console.error("Gemini returned empty response for script");
+        Format your response as valid JSON with this structure:
+        {
+          "scenes": [
+            {
+              "content": "The spoken text for scene 1",
+              "imagePrompt": "Detailed image generation prompt for scene 1"
+            },
+            {
+              "content": "The spoken text for scene 2",
+              "imagePrompt": "Detailed image generation prompt for scene 2"
+            },
+            ... and so on
+          ]
+        }
+        
+        Make sure each image prompt is specific, detailed and would generate a high-quality, professional image directly with an AI model.
+        Keep the entire script cohesive, with a clear beginning, middle, and end.
+        `;
+        
+        console.log("Sending scene-based prompt to Gemini");
+        
+        const result = await model.generateContent(scenePrompt);
+        const responseText = result.response.text();
+        
+        if (!responseText) {
+            console.error("Gemini returned empty response");
             return NextResponse.json({ error: "AI generated empty content" }, { status: 500 });
         }
         
-        // Generate keywords for broll images
-        const keywordsPrompt = `Based on this script about ${prompt}, generate 5-8 specific keywords or short phrases that would make good visual B-roll images to accompany the video. Each keyword should represent a clear, concrete visual that relates to the script's topic. Format your response as a comma-separated list with no additional text or explanation.
-
-Script:
-${scriptText}`;
-        
-        console.log("Sending keywords prompt to Gemini:", keywordsPrompt);
-        
-        const keywordsResult = await model.generateContent(keywordsPrompt);
-        const keywordsText = keywordsResult.response.text();
-        
-        // Parse keywords into array
-        const keywords = keywordsText
-            ? keywordsText.split(',').map(k => k.trim()).filter(k => k.length > 0)
-            : [];
-        
-        console.log("Generated script:", scriptText.substring(0, 100) + "...");
-        console.log("Generated keywords:", keywords);
-        
-        // Return with consistent structure
-        return NextResponse.json({ 
-            success: true, 
-            text: scriptText,
-            keywords: keywords
-        });
-        
+        try {
+            // Parse the JSON response
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+                throw new Error("Could not extract JSON from response");
+            }
+            
+            const jsonText = jsonMatch[0];
+            const parsedResponse: ScriptResponse = JSON.parse(jsonText);
+            
+            // Validate response structure
+            if (!parsedResponse.scenes || !Array.isArray(parsedResponse.scenes)) {
+                throw new Error("Invalid response format: missing scenes array");
+            }
+            
+            // Get the full script by combining all scene content
+            const fullScript = parsedResponse.scenes.map(scene => scene.content).join("\n\n");
+            
+            // Log for debugging
+            console.log("Generated scenes:", parsedResponse.scenes.length);
+            console.log("Full script:", fullScript.substring(0, 100) + "...");
+            
+            // Return the structured response
+            return NextResponse.json({ 
+                success: true, 
+                scenes: parsedResponse.scenes,
+                fullScript: fullScript
+            });
+        } catch (parseError) {
+            console.error("Error parsing Gemini JSON response:", parseError);
+            console.log("Raw response:", responseText);
+            
+            return NextResponse.json({ 
+                error: "Failed to parse AI response", 
+                details: parseError instanceof Error ? parseError.message : "Unknown error"
+            }, { status: 500 });
+        }
     } catch (error) {
         console.error("Script generation error:", error);
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
