@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { title, script } = await req.json();
+    const { title, script, keywords = [] } = await req.json();
     
     if (!title || !script) {
       return NextResponse.json({ 
@@ -19,11 +19,12 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Create new project
+    // Create new project with keywords
     const project = await prisma.project.create({
       data: {
         title,
         script,
+        keywords: keywords,
         userId: session.user.id,
         status: "DRAFT",
       },

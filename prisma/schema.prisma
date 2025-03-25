@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// prisma/schema.prisma
+// This is your Prisma schema file - updated to include broll fields
 
 generator client {
   provider = "prisma-client-js"
@@ -72,15 +72,19 @@ model User {
 }
 
 model Project {
-  id           Int      @id @default(autoincrement())
-  title        String
-  userId       String 
-  script       String?  @db.Text
-  outputUrl    String?  
-  status       ProjectStatus @default(DRAFT)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              Int      @id @default(autoincrement())
+  title           String
+  userId          String 
+  script          String?  @db.Text
+  outputUrl       String?  
+  status          ProjectStatus @default(DRAFT)
+  keywords        String[] // Added for storing broll keywords
+  brollImages     String[] // Added for storing broll image URLs
+  brollVideoUrl   String?  // Added for storing the broll video URL
+  finalVideoUrl   String?  // Added for storing the final merged video URL
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@index([userId])
 }

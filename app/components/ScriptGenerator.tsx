@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSession } from "next-auth/react";
-import { FileText, Wand2, AlertCircle, CheckCircle } from "lucide-react";
+import { FileText, Wand2, AlertCircle, CheckCircle, Tag } from "lucide-react";
 
 export default function ScriptGenerator() {
   const { data: session } = useSession();
@@ -11,14 +11,14 @@ export default function ScriptGenerator() {
   const [generated, setGenerated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [script, setScript] = useState<string>("");
+  const [keywords, setKeywords] = useState<string[]>([]);
 
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setPrompt(e.target.value);
     setError(null);
   };
 
-// app/components/ScriptGenerator.tsx (relevant part of the handleGenerateScript function)
-const handleGenerateScript = async () => {
+  const handleGenerateScript = async () => {
     if (!prompt.trim()) {
       setError("Please enter a prompt for script generation");
       return;
@@ -57,6 +57,7 @@ const handleGenerateScript = async () => {
       }
       
       setScript(data.text);
+      setKeywords(data.keywords || []);
       setGenerated(true);
     } catch (err) {
       console.error("Script generation error:", err);
@@ -64,7 +65,7 @@ const handleGenerateScript = async () => {
     } finally {
       setGenerating(false);
     }
-};
+  };
 
   const handleSave = async () => {
     try {
@@ -77,6 +78,7 @@ const handleGenerateScript = async () => {
         body: JSON.stringify({
           title: prompt.length > 30 ? prompt.substring(0, 30) + "..." : prompt,
           script,
+          keywords: keywords,
         }),
       });
 
@@ -163,9 +165,28 @@ const handleGenerateScript = async () => {
               Save to Project
             </button>
           </div>
-          <div className="p-4 bg-gray-50 rounded-md border border-gray-200">
+          <div className="p-4 bg-gray-50 rounded-md border border-gray-200 mb-4">
             <p className="whitespace-pre-wrap text-gray-800">{script}</p>
           </div>
+          
+          {keywords.length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-sm font-medium text-gray-700 flex items-center mb-2">
+                <Tag className="h-3 w-3 mr-1" />
+                Visual Keywords for B-roll
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {keywords.map((keyword, index) => (
+                  <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-xs">
+                    {keyword}
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                These keywords will be used to generate B-roll images for your video.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

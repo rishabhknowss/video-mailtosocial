@@ -8,7 +8,7 @@ import { Readable } from "stream";
 
 // Configure S3 client
 const s3Client = new S3Client({ 
-  region: "us-west-1" // Make sure this matches your bucket region
+  region: "us-west-1" 
 });
 
 export async function POST(req: NextRequest) {

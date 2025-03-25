@@ -29,24 +29,42 @@ export async function POST(req: NextRequest) {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         
-        // Generate content
-        const fullPrompt = `Write a short, engaging script about ${prompt} from a first-person perspective. Only one person should be speaking. The script should feel natural, like someone sharing their thoughts or expertise in a conversational yet professional tone. Keep it concise and suited for a 30-60 second video. No greetings, introductions, or sign-offs—just straight into the topic.`;
-        console.log("Sending prompt to Gemini:", fullPrompt);
+        // Generate script content
+        const scriptPrompt = `Write a short, engaging script about ${prompt} from a first-person perspective. Only one person should be speaking. The script should feel natural, like someone sharing their thoughts or expertise in a conversational yet professional tone. Keep it concise and suited for a 30-60 second video. No greetings, introductions, or sign-offs—just straight into the topic.`;
+        console.log("Sending script prompt to Gemini:", scriptPrompt);
         
-        const result = await model.generateContent(fullPrompt);
-        const generatedText = result.response.text();
+        const scriptResult = await model.generateContent(scriptPrompt);
+        const scriptText = scriptResult.response.text();
         
-        if (!generatedText) {
-            console.error("Gemini returned empty response");
+        if (!scriptText) {
+            console.error("Gemini returned empty response for script");
             return NextResponse.json({ error: "AI generated empty content" }, { status: 500 });
         }
         
-        console.log("Generated script:", generatedText.substring(0, 100) + "...");
+        // Generate keywords for broll images
+        const keywordsPrompt = `Based on this script about ${prompt}, generate 5-8 specific keywords or short phrases that would make good visual B-roll images to accompany the video. Each keyword should represent a clear, concrete visual that relates to the script's topic. Format your response as a comma-separated list with no additional text or explanation.
+
+Script:
+${scriptText}`;
+        
+        console.log("Sending keywords prompt to Gemini:", keywordsPrompt);
+        
+        const keywordsResult = await model.generateContent(keywordsPrompt);
+        const keywordsText = keywordsResult.response.text();
+        
+        // Parse keywords into array
+        const keywords = keywordsText
+            ? keywordsText.split(',').map(k => k.trim()).filter(k => k.length > 0)
+            : [];
+        
+        console.log("Generated script:", scriptText.substring(0, 100) + "...");
+        console.log("Generated keywords:", keywords);
         
         // Return with consistent structure
         return NextResponse.json({ 
             success: true, 
-            text: generatedText 
+            text: scriptText,
+            keywords: keywords
         });
         
     } catch (error) {
